@@ -26,14 +26,14 @@
 /* -- Types ----------------------------------------------------------------- */
 
 typedef struct {
-    char** states;
+    unsigned char** states;
 } config;
 
 /* -- Prototypes, Because C++ ----------------------------------------------- */
 
 void            vanity_setup(config& vanity);
 void            vanity_run(config& vanity);
-void __global__ vanity_scan(char* state, int* keys_found, int* gpu, int* execution_count);
+void __global__ vanity_scan(unsigned char* state, int* keys_found, int* gpu, int* execution_count);
 void __device__ b58enc(char* b58, const uint8_t* data);
 
 /* -- Entry Point ----------------------------------------------------------- */
@@ -59,7 +59,7 @@ void vanity_setup(config &vanity) {
     printf("GPU: Initializing Memory\n");
     int gpuCount = 0;
     cudaGetDeviceCount(&gpuCount);
-    vanity.states = (char *) malloc(gpuCount * sizeof(char *));
+    vanity.states = (unsigned char **) malloc(gpuCount * sizeof(unsigned char *));
 
     // Create random states so kernels have access to random generators
     // while running in the GPU.
@@ -107,13 +107,12 @@ void vanity_setup(config &vanity) {
         );
 
         unsigned int n = maxActiveBlocks * blockSize * 32;
-        char *rseed = (char *) malloc(n);
+        unsigned char *rseed = (unsigned char *) malloc(n);
 
         std::random_device rd;
-        for (int j = 0; j < n; ++j) {
-            auto r = rd();
-            char *entropy = (char *)&r;
-            rseed[j] = entropy[0];
+        std::uniform_int_distribution<int> dist(0, 255);
+        for (unsigned int j = 0; j < n; ++j) {
+            rseed[j] = static_cast<unsigned char>(dist(rd));
         }
 
         cudaMalloc((void **)&(vanity.states[i]), n);
@@ -204,7 +203,7 @@ void vanity_run(config &vanity) {
 
 /* -- CUDA Vanity Functions ------------------------------------------------- */
 
-void __global__ vanity_scan(char* state, int* keys_found, int* gpu, int* exec_count) {
+void __global__ vanity_scan(unsigned char* state, int* keys_found, int* gpu, int* exec_count) {
     int id = threadIdx.x + blockIdx.x * blockDim.x +
         (threadIdx.y + blockIdx.y * blockDim.y) * gridDim.x * blockDim.x +
         (threadIdx.z + blockIdx.z * blockDim.z) * gridDim.x * blockDim.x * gridDim.y * blockDim.y;
@@ -270,11 +269,7 @@ void __global__ vanity_scan(char* state, int* keys_found, int* gpu, int* exec_co
         //   * We can eliminate a MIN(inlen, (128 - md.curlen)) comparison, specialize to 32, branch prediction improvement.
         //   * We can eliminate the in/inlen tracking as we will never subtract while under 128
         //   * As a result, the only thing update does is copy the bytes into the buffer.
-        const unsigned char *in = seed;
-        #pragma unroll
-        for (size_t i = 0; i < 32; i++) {
-            md.buf[i + md.curlen] = in[i];
-        }
+        memcpy(md.buf + md.curlen, seed, 32);
         md.curlen += 32;
 
         // sha512_final inlined
