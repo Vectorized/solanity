@@ -26,7 +26,7 @@
 /* -- Types ----------------------------------------------------------------- */
 
 typedef struct {
-    char*    states[8];
+    char** states;
 } config;
 
 /* -- Prototypes, Because C++ ----------------------------------------------- */
@@ -59,6 +59,7 @@ void vanity_setup(config &vanity) {
     printf("GPU: Initializing Memory\n");
     int gpuCount = 0;
     cudaGetDeviceCount(&gpuCount);
+    vanity.states = (char *) malloc(gpuCount * sizeof(char *));
 
     // Create random states so kernels have access to random generators
     // while running in the GPU.
@@ -172,12 +173,12 @@ void vanity_run(config &vanity) {
         for (int g = 0; g < gpuCount; ++g) {
             cudaMemcpy( &keys_found_this_iteration, dev_keys_found[g], sizeof(int), cudaMemcpyDeviceToHost ); 
             keys_found_total += keys_found_this_iteration; 
-    //printf("GPU %d found %d keys\n",g,keys_found_this_iteration);
+            //printf("GPU %d found %d keys\n",g,keys_found_this_iteration);
 
             cudaMemcpy( &executions_this_gpu, dev_executions_this_gpu[g], sizeof(int), cudaMemcpyDeviceToHost ); 
             executions_this_iteration += executions_this_gpu * ATTEMPTS_PER_EXECUTION; 
             executions_total += executions_this_gpu * ATTEMPTS_PER_EXECUTION; 
-                //printf("GPU %d executions: %d\n",g,executions_this_gpu);
+            //printf("GPU %d executions: %d\n",g,executions_this_gpu);
         }
 
         // Print out performance Summary
@@ -185,16 +186,16 @@ void vanity_run(config &vanity) {
         printf("%s Iteration %d Attempts: %llu in %f at %fcps - Total Attempts %llu - keys found %d\n",
             getTimeStr().c_str(),
             i+1,
-            executions_this_iteration, //(8 * 8 * 256 * 100000),
+            executions_this_iteration,
             elapsed.count(),
             executions_this_iteration / elapsed.count(),
             executions_total,
             keys_found_total
         );
 
-                if ( keys_found_total >= STOP_AFTER_KEYS_FOUND ) {
-                    printf("Enough keys found, Done! \n");
-                exit(0);    
+        if ( keys_found_total >= STOP_AFTER_KEYS_FOUND ) {
+            printf("Enough keys found, Done! \n");
+            exit(0);    
         }   
     }
 
@@ -213,9 +214,9 @@ void __global__ vanity_scan(char* state, int* keys_found, int* gpu, int* exec_co
     // SMITH - should really be passed in, but hey ho
     int prefix_letter_counts[MAX_PATTERNS];
     for (unsigned int n = 0; n < sizeof(prefixes) / sizeof(prefixes[0]); ++n) {
-        if ( MAX_PATTERNS == n ) {
-                printf("NEVER SPEAK TO ME OR MY SON AGAIN");
-                return;
+        if (MAX_PATTERNS == n) {
+            printf("NEVER SPEAK TO ME OR MY SON AGAIN");
+            return;
         }
         int letter_count = 0;
         for(; prefixes[n][letter_count]!=0; letter_count++);
@@ -275,7 +276,6 @@ void __global__ vanity_scan(char* state, int* keys_found, int* gpu, int* exec_co
             md.buf[i + md.curlen] = in[i];
         }
         md.curlen += 32;
-
 
         // sha512_final inlined
         // 
@@ -399,14 +399,14 @@ void __global__ vanity_scan(char* state, int* keys_found, int* gpu, int* exec_co
                     // as an array of decimal numbers in json format
 
                     printf("GPU %d MATCH %s - ", *gpu, key);
-                    for (int n=0; n < sizeof(seed); n++) { 
-                        printf("%02x",(unsigned char)seed[n]); 
+                    for (int n = 0; n < sizeof(seed); n++) { 
+                        printf("%02x", (unsigned char)seed[n]); 
                     }
                     printf("\n");
                     
                     printf("[");
                     for (int n = 0; n < sizeof(seed); n++) { 
-                        printf("%d,",(unsigned char)seed[n]); 
+                        printf("%d,", (unsigned char)seed[n]);
                     }
                     for (int n = 0; n < sizeof(publick); n++) {
                         if (n + 1 == sizeof(publick)) {   
@@ -437,11 +437,6 @@ void __global__ vanity_scan(char* state, int* keys_found, int* gpu, int* exec_co
         // Code Until here runs at 22_000_000H/s. So the above is fast enough.
 
         // Increment Seed.
-        // NOTE: This is horrifically insecure. Please don't use these
-        // keys on live. This increment is just so we don't have to
-        // invoke the CUDA random number generator for each hash to
-        // boost performance a little. Easy key generation, awful
-        // security.
         for (int i = 0; i < 8; ++i) {
             if (++seed_limbs[i] != 0) break;
         }
@@ -452,6 +447,7 @@ void __global__ vanity_scan(char* state, int* keys_found, int* gpu, int* exec_co
     memcpy(state + id * 32, seed_limbs, 32);
 }
 
+// Modified from https://github.com/firedancer-io/firedancer/tree/main/src/ballet/base58
 void __device__ b58enc(
     char    *b58,
     const uint8_t *data
