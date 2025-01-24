@@ -17,4 +17,7 @@ __device__ static char const *prefixes[] = {
 	"De1egate"
 };
 
+// "_" to denote exact case
+// "@" to denote case insensitive
+__device__ static char const *prefix_ignore_case_mask = "_____@@@";
 #endif

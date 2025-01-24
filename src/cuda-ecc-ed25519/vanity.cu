@@ -218,10 +218,14 @@ void __global__ vanity_scan(unsigned char* state, int* keys_found, int* gpu, int
             return;
         }
         int letter_count = 0;
-        for(; prefixes[n][letter_count]!=0; letter_count++);
+        for (; prefixes[n][letter_count] != 0; letter_count++);
         prefix_letter_counts[n] = letter_count;
     }
-
+    unsigned int prefix_ignore_case_bitmask = 0;
+    for (int i = 0; prefix_ignore_case_mask[i] != 0; i++) {
+        prefix_ignore_case_bitmask |= 1 << (prefix_ignore_case_mask[i] == 64);
+    }
+    
     // Local Kernel State
     ge_p3 A;
     unsigned int seed_limbs[8] = {0};
@@ -373,9 +377,9 @@ void __global__ vanity_scan(unsigned char* state, int* keys_found, int* gpu, int
         for (int i = 0; i < sizeof(prefixes) / sizeof(prefixes[0]); ++i) {
 
             for (int j = 0; j < prefix_letter_counts[i]; ++j) {
-
+                #define KEY_CHAR (key[j] | (((key[j] > 57) & ((prefix_ignore_case_bitmask >> j) & 1)) << 5))
                 // it doesn't match this prefix, no need to continue
-                if (!(prefixes[i][j] == '?') && !(prefixes[i][j] == key[j])) {
+                if (!(prefixes[i][j] == '?') && !(prefixes[i][j] == KEY_CHAR)) {
                     break;
                 }
 
