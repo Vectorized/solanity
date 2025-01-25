@@ -38,3 +38,5 @@ LD_LIBRARY_PATH=./src/release ./src/release/cuda_ed25519_vanity
 ## Notes
 
 Due to how base58 is encoded, a prefix starting with lowercase "a" is much harder to mine than a prefix starting with an uppercase "A". Generally, the higher the ASCII value of the starting character, the harder it is to mine.
+
+Mining Solana base58 addresses is much harder than mining Ethereum hexadecimal addresses. 
