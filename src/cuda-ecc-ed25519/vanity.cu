@@ -223,7 +223,7 @@ void __global__ vanity_scan(unsigned char* state, int* keys_found, int* gpu, int
     }
     char prefix_ignore_case_char_masks[64];
     for (int i = 0; i < 64; i++) prefix_ignore_case_char_masks[i] = 0xff;
-    for (int i = 0; prefix_ignore_case_mask[i] != 0; i++) {
+    for (int i = 0; prefix_ignore_case_mask[i] != 0 && i < 64; i++) {
         prefix_ignore_case_char_masks[i] ^= (prefix_ignore_case_mask[i] == 64) << 5;
     }
     
@@ -376,16 +376,17 @@ void __global__ vanity_scan(unsigned char* state, int* keys_found, int* gpu, int
         // this.
 
         #define CONDITIONAL_CASE_CHAR_EQ(a, b, j) ((prefix_ignore_case_char_masks[j] & (a[j] ^ b[j])) == 0)
-        #define CHAR_EQ(j) ((j >= prefix_letter_counts[i]) || ((CONDITIONAL_CASE_CHAR_EQ(prefixes[i], key, j) | (prefixes[i][j] == '?'))))
+        #define IN_RANGE_CHAR_EQ(j) ((CONDITIONAL_CASE_CHAR_EQ(prefixes[i], key, j) | (prefixes[i][j] == '?')))
+        #define CHAR_EQ(j) ((j >= prefix_letter_counts[i]) | IN_RANGE_CHAR_EQ(j))
 
         for (int i = 0; i < sizeof(prefixes) / sizeof(prefixes[0]); ++i) {
-            if (!(CHAR_EQ(0) & CHAR_EQ(1) & CHAR_EQ(2) & CHAR_EQ(3))) continue;
+            if (!(
+                CHAR_EQ(0) & CHAR_EQ(1) & CHAR_EQ(2) & CHAR_EQ(3) &
+                CHAR_EQ(4) & CHAR_EQ(5) & CHAR_EQ(6) & CHAR_EQ(7)
+            )) continue;
 
             for (int j = 0; j < prefix_letter_counts[i]; ++j) {
-                // it doesn't match this prefix, no need to continue
-                if (!CONDITIONAL_CASE_CHAR_EQ(prefixes[i], key, j) && !(prefixes[i][j] == '?')) {
-                    break;
-                }
+                if (!IN_RANGE_CHAR_EQ(j)) break;
 
                 // we got to the end of the prefix pattern, it matched!
                 if (j == ( prefix_letter_counts[i] - 1)) {
@@ -471,8 +472,8 @@ void __device__ b58enc(
     #define RAW58_SZ (INTERMEDIATE_SZ * 5)
     #define RAW58_SZ_WITH_PADDING 64
     
-    unsigned int in_leading_0s = __clz(binary[0]) >> 3;
-    if (in_leading_0s == 4) {
+    unsigned int in_leading_0s = (__clz(binary[0]) >> 3) + (binary[0] == 0) * (__clz(binary[1]) >> 3);
+    if (in_leading_0s == 8) {
         for (; in_leading_0s < 32; in_leading_0s++) if (data[in_leading_0s]) break;    
     }
     
@@ -542,11 +543,12 @@ void __device__ b58enc(
         raw_base58[5 * i + 1] = ((((unsigned int) intermediate[i]) / 195112U  ) % 58U);
         raw_base58[5 * i + 0] = ( ((unsigned int) intermediate[i]) / 11316496U);    
     }
-    unsigned int raw_leading_0s;
-    memcpy(&raw_leading_0s, raw_base58, 4);
-    raw_leading_0s = __clz(__byte_perm(raw_leading_0s, 0, 0x0123)) >> 3;
+    unsigned int t[2];
+    memcpy(t, raw_base58, 8);
+    unsigned int raw_leading_0s = (__clz(__byte_perm(t[0], 0, 0x0123)) >> 3) +
+        (t[0] == 0) * (__clz(__byte_perm(t[1], 0, 0x0123)) >> 3);
 
-    if (raw_leading_0s == 4) {
+    if (raw_leading_0s == 8) {
         for (; raw_leading_0s < RAW58_SZ; raw_leading_0s++) if (raw_base58[raw_leading_0s]) break;    
     }
 
