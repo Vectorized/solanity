@@ -221,9 +221,10 @@ void __global__ vanity_scan(unsigned char* state, int* keys_found, int* gpu, int
         for (; prefixes[n][letter_count] != 0; letter_count++);
         prefix_letter_counts[n] = letter_count;
     }
-    unsigned int prefix_ignore_case_bitmask = 0;
+    char prefix_ignore_case_char_masks[64];
+    for (int i = 0; i < 64; i++) prefix_ignore_case_char_masks[i] = 0xff;
     for (int i = 0; prefix_ignore_case_mask[i] != 0; i++) {
-        prefix_ignore_case_bitmask |= 1 << (prefix_ignore_case_mask[i] == 64);
+        prefix_ignore_case_char_masks[i] ^= (prefix_ignore_case_mask[i] == 64) << 5;
     }
     
     // Local Kernel State
@@ -374,12 +375,13 @@ void __global__ vanity_scan(unsigned char* state, int* keys_found, int* gpu, int
         // so it might make sense to write a new parallel kernel to do
         // this.
 
+        #define CONDITIONAL_CASE_CHAR_EQ(a, b, j) ((prefix_ignore_case_char_masks[j] & (a[j] ^ b[j])) == 0)
+
         for (int i = 0; i < sizeof(prefixes) / sizeof(prefixes[0]); ++i) {
 
             for (int j = 0; j < prefix_letter_counts[i]; ++j) {
-                #define KEY_CHAR (key[j] | (((key[j] > 57) & ((prefix_ignore_case_bitmask >> j) & 1)) << 5))
                 // it doesn't match this prefix, no need to continue
-                if (!(prefixes[i][j] == '?') && !(prefixes[i][j] == KEY_CHAR)) {
+                if (!CONDITIONAL_CASE_CHAR_EQ(prefixes[i], key, j) &&!(prefixes[i][j] == '?')) {
                     break;
                 }
 
@@ -452,115 +454,98 @@ void __device__ b58enc(
     const uint8_t *data
 ) {
     #define BINARY_SZ 8
-    #define INTERMEDIATE_SZ 9
-    
-    unsigned int in_leading_0s = 0;
-    for (; in_leading_0s < 32; in_leading_0s++) if (data[in_leading_0s]) break;
-    
-    #define INIT_BINARY(i) const unsigned int binary##i = \
-    (((unsigned int) data[i * 4 + 0]) << 24) | \
-    (((unsigned int) data[i * 4 + 1]) << 16) | \
-    (((unsigned int) data[i * 4 + 2]) << 8) | \
-    (((unsigned int) data[i * 4 + 3]));
+    #define INTERMEDIATE_SZ 9    
+
+    unsigned int binary[BINARY_SZ];
+    memcpy(binary, data, 32);
+
+    #pragma unroll
+    for (int i = 0; i < 8; ++i) {
+        binary[i] = __byte_perm(binary[i], 0, 0x0123);
+    }
     
     #define R1_DIV 656356768UL
     #define RAW58_SZ (INTERMEDIATE_SZ * 5)
     
-    INIT_BINARY(0)
-    INIT_BINARY(1)
-    INIT_BINARY(2)
-    INIT_BINARY(3)
-    INIT_BINARY(4)
-    INIT_BINARY(5)
-    INIT_BINARY(6)
-    INIT_BINARY(7)
+    unsigned int in_leading_0s = __clz(binary[0]) >> 3;
+    if (in_leading_0s == 4) {
+        for (; in_leading_0s < 32; in_leading_0s++) if (data[in_leading_0s]) break;    
+    }
     
-    unsigned long intermediate0 = 0;
-    unsigned long intermediate1 = 0;
-    unsigned long intermediate2 = 0;
-    unsigned long intermediate3 = 0;
-    unsigned long intermediate4 = 0;
-    unsigned long intermediate5 = 0;
-    unsigned long intermediate6 = 0;
-    unsigned long intermediate7 = 0;
-    unsigned long intermediate8 = 0;
+    unsigned long intermediate[INTERMEDIATE_SZ] = {0};
     
-    intermediate1 += (unsigned long) binary0 * (unsigned long) 513735UL;
-    intermediate2 += (unsigned long) binary0 * (unsigned long) 77223048UL;
-    intermediate3 += (unsigned long) binary0 * (unsigned long) 437087610UL;
-    intermediate4 += (unsigned long) binary0 * (unsigned long) 300156666UL;
-    intermediate5 += (unsigned long) binary0 * (unsigned long) 605448490UL;
-    intermediate6 += (unsigned long) binary0 * (unsigned long) 214625350UL;
-    intermediate7 += (unsigned long) binary0 * (unsigned long) 141436834UL;
-    intermediate8 += (unsigned long) binary0 * (unsigned long) 379377856UL;
-    intermediate2 += (unsigned long) binary1 * (unsigned long) 78508UL;
-    intermediate3 += (unsigned long) binary1 * (unsigned long) 646269101UL;
-    intermediate4 += (unsigned long) binary1 * (unsigned long) 118408823UL;
-    intermediate5 += (unsigned long) binary1 * (unsigned long) 91512303UL;
-    intermediate6 += (unsigned long) binary1 * (unsigned long) 209184527UL;
-    intermediate7 += (unsigned long) binary1 * (unsigned long) 413102373UL;
-    intermediate8 += (unsigned long) binary1 * (unsigned long) 153715680UL;
-    intermediate3 += (unsigned long) binary2 * (unsigned long) 11997UL;
-    intermediate4 += (unsigned long) binary2 * (unsigned long) 486083817UL;
-    intermediate5 += (unsigned long) binary2 * (unsigned long) 3737691UL;
-    intermediate6 += (unsigned long) binary2 * (unsigned long) 294005210UL;
-    intermediate7 += (unsigned long) binary2 * (unsigned long) 247894721UL;
-    intermediate8 += (unsigned long) binary2 * (unsigned long) 289024608UL;
-    intermediate4 += (unsigned long) binary3 * (unsigned long) 1833UL;
-    intermediate5 += (unsigned long) binary3 * (unsigned long) 324463681UL;
-    intermediate6 += (unsigned long) binary3 * (unsigned long) 385795061UL;
-    intermediate7 += (unsigned long) binary3 * (unsigned long) 551597588UL;
-    intermediate8 += (unsigned long) binary3 * (unsigned long) 21339008UL;
-    intermediate5 += (unsigned long) binary4 * (unsigned long) 280UL;
-    intermediate6 += (unsigned long) binary4 * (unsigned long) 127692781UL;
-    intermediate7 += (unsigned long) binary4 * (unsigned long) 389432875UL;
-    intermediate8 += (unsigned long) binary4 * (unsigned long) 357132832UL;
-    intermediate6 += (unsigned long) binary5 * (unsigned long) 42UL;
-    intermediate7 += (unsigned long) binary5 * (unsigned long) 537767569UL;
-    intermediate8 += (unsigned long) binary5 * (unsigned long) 410450016UL;
-    intermediate7 += (unsigned long) binary6 * (unsigned long) 6UL;
-    intermediate8 += (unsigned long) binary6 * (unsigned long) 356826688UL;
-    intermediate8 += (unsigned long) binary7 * (unsigned long) 1UL;
+    intermediate[1] += (unsigned long) binary[0] * (unsigned long) 513735UL;
+    intermediate[2] += (unsigned long) binary[0] * (unsigned long) 77223048UL;
+    intermediate[3] += (unsigned long) binary[0] * (unsigned long) 437087610UL;
+    intermediate[4] += (unsigned long) binary[0] * (unsigned long) 300156666UL;
+    intermediate[5] += (unsigned long) binary[0] * (unsigned long) 605448490UL;
+    intermediate[6] += (unsigned long) binary[0] * (unsigned long) 214625350UL;
+    intermediate[7] += (unsigned long) binary[0] * (unsigned long) 141436834UL;
+    intermediate[8] += (unsigned long) binary[0] * (unsigned long) 379377856UL;
+    intermediate[2] += (unsigned long) binary[1] * (unsigned long) 78508UL;
+    intermediate[3] += (unsigned long) binary[1] * (unsigned long) 646269101UL;
+    intermediate[4] += (unsigned long) binary[1] * (unsigned long) 118408823UL;
+    intermediate[5] += (unsigned long) binary[1] * (unsigned long) 91512303UL;
+    intermediate[6] += (unsigned long) binary[1] * (unsigned long) 209184527UL;
+    intermediate[7] += (unsigned long) binary[1] * (unsigned long) 413102373UL;
+    intermediate[8] += (unsigned long) binary[1] * (unsigned long) 153715680UL;
+    intermediate[3] += (unsigned long) binary[2] * (unsigned long) 11997UL;
+    intermediate[4] += (unsigned long) binary[2] * (unsigned long) 486083817UL;
+    intermediate[5] += (unsigned long) binary[2] * (unsigned long) 3737691UL;
+    intermediate[6] += (unsigned long) binary[2] * (unsigned long) 294005210UL;
+    intermediate[7] += (unsigned long) binary[2] * (unsigned long) 247894721UL;
+    intermediate[8] += (unsigned long) binary[2] * (unsigned long) 289024608UL;
+    intermediate[4] += (unsigned long) binary[3] * (unsigned long) 1833UL;
+    intermediate[5] += (unsigned long) binary[3] * (unsigned long) 324463681UL;
+    intermediate[6] += (unsigned long) binary[3] * (unsigned long) 385795061UL;
+    intermediate[7] += (unsigned long) binary[3] * (unsigned long) 551597588UL;
+    intermediate[8] += (unsigned long) binary[3] * (unsigned long) 21339008UL;
+    intermediate[5] += (unsigned long) binary[4] * (unsigned long) 280UL;
+    intermediate[6] += (unsigned long) binary[4] * (unsigned long) 127692781UL;
+    intermediate[7] += (unsigned long) binary[4] * (unsigned long) 389432875UL;
+    intermediate[8] += (unsigned long) binary[4] * (unsigned long) 357132832UL;
+    intermediate[6] += (unsigned long) binary[5] * (unsigned long) 42UL;
+    intermediate[7] += (unsigned long) binary[5] * (unsigned long) 537767569UL;
+    intermediate[8] += (unsigned long) binary[5] * (unsigned long) 410450016UL;
+    intermediate[7] += (unsigned long) binary[6] * (unsigned long) 6UL;
+    intermediate[8] += (unsigned long) binary[6] * (unsigned long) 356826688UL;
+    intermediate[8] += (unsigned long) binary[7] * (unsigned long) 1UL;
     
-    intermediate7 += intermediate8 / R1_DIV;
-    intermediate8 %= R1_DIV;
-    intermediate6 += intermediate7 / R1_DIV;
-    intermediate7 %= R1_DIV;
-    intermediate5 += intermediate6 / R1_DIV;
-    intermediate6 %= R1_DIV;
-    intermediate4 += intermediate5 / R1_DIV;
-    intermediate5 %= R1_DIV;
-    intermediate3 += intermediate4 / R1_DIV;
-    intermediate4 %= R1_DIV;
-    intermediate2 += intermediate3 / R1_DIV;
-    intermediate3 %= R1_DIV;
-    intermediate1 += intermediate2 / R1_DIV;
-    intermediate2 %= R1_DIV;
-    intermediate0 += intermediate1 / R1_DIV;
-    intermediate1 %= R1_DIV;
+    intermediate[7] += intermediate[8] / R1_DIV;
+    intermediate[8] %= R1_DIV;
+    intermediate[6] += intermediate[7] / R1_DIV;
+    intermediate[7] %= R1_DIV;
+    intermediate[5] += intermediate[6] / R1_DIV;
+    intermediate[6] %= R1_DIV;
+    intermediate[4] += intermediate[5] / R1_DIV;
+    intermediate[5] %= R1_DIV;
+    intermediate[3] += intermediate[4] / R1_DIV;
+    intermediate[4] %= R1_DIV;
+    intermediate[2] += intermediate[3] / R1_DIV;
+    intermediate[3] %= R1_DIV;
+    intermediate[1] += intermediate[2] / R1_DIV;
+    intermediate[2] %= R1_DIV;
+    intermediate[0] += intermediate[1] / R1_DIV;
+    intermediate[1] %= R1_DIV;
     
-    uint_fast8_t raw_base58[RAW58_SZ];
+    uint_fast8_t raw_base58[64];
     
-    #define DO_FINAL(i) \
-    raw_base58[5 * i + 4] = ((((unsigned int) intermediate##i) / 1U       ) % 58U); \
-    raw_base58[5 * i + 3] = ((((unsigned int) intermediate##i) / 58U      ) % 58U); \
-    raw_base58[5 * i + 2] = ((((unsigned int) intermediate##i) / 3364U    ) % 58U); \
-    raw_base58[5 * i + 1] = ((((unsigned int) intermediate##i) / 195112U  ) % 58U); \
-    raw_base58[5 * i + 0] = ( ((unsigned int) intermediate##i) / 11316496U);
-    
-    DO_FINAL(0)
-    DO_FINAL(1)
-    DO_FINAL(2)
-    DO_FINAL(3)
-    DO_FINAL(4)
-    DO_FINAL(5)
-    DO_FINAL(6)
-    DO_FINAL(7)
-    DO_FINAL(8)
-    
-    unsigned int raw_leading_0s = 0;
-    for (; raw_leading_0s < RAW58_SZ; raw_leading_0s++) if (raw_base58[raw_leading_0s]) break;
-    
+    #pragma unroll
+    for (int i = 0; i < INTERMEDIATE_SZ; ++i) {
+        raw_base58[5 * i + 4] = ((((unsigned int) intermediate[i]) / 1U       ) % 58U);
+        raw_base58[5 * i + 3] = ((((unsigned int) intermediate[i]) / 58U      ) % 58U);
+        raw_base58[5 * i + 2] = ((((unsigned int) intermediate[i]) / 3364U    ) % 58U);
+        raw_base58[5 * i + 1] = ((((unsigned int) intermediate[i]) / 195112U  ) % 58U);
+        raw_base58[5 * i + 0] = ( ((unsigned int) intermediate[i]) / 11316496U);    
+    }
+    unsigned int raw_leading_0s;
+    memcpy(&raw_leading_0s, raw_base58, 4);
+    raw_leading_0s = __clz(__byte_perm(raw_leading_0s, 0, 0x0123)) >> 3;
+
+    if (raw_leading_0s == 4) {
+        for (; raw_leading_0s < RAW58_SZ; raw_leading_0s++) if (raw_base58[raw_leading_0s]) break;    
+    }
+
     unsigned int skip = raw_leading_0s - in_leading_0s;
     
     static uint_fast8_t const b58digits_ordered[] = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
