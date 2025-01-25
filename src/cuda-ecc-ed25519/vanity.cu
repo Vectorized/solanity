@@ -376,12 +376,14 @@ void __global__ vanity_scan(unsigned char* state, int* keys_found, int* gpu, int
         // this.
 
         #define CONDITIONAL_CASE_CHAR_EQ(a, b, j) ((prefix_ignore_case_char_masks[j] & (a[j] ^ b[j])) == 0)
+        #define CHAR_EQ(j) ((j >= prefix_letter_counts[i]) || ((CONDITIONAL_CASE_CHAR_EQ(prefixes[i], key, j) | (prefixes[i][j] == '?'))))
 
         for (int i = 0; i < sizeof(prefixes) / sizeof(prefixes[0]); ++i) {
+            if (!(CHAR_EQ(0) & CHAR_EQ(1) & CHAR_EQ(2) & CHAR_EQ(3))) continue;
 
             for (int j = 0; j < prefix_letter_counts[i]; ++j) {
                 // it doesn't match this prefix, no need to continue
-                if (!CONDITIONAL_CASE_CHAR_EQ(prefixes[i], key, j) &&!(prefixes[i][j] == '?')) {
+                if (!CONDITIONAL_CASE_CHAR_EQ(prefixes[i], key, j) && !(prefixes[i][j] == '?')) {
                     break;
                 }
 
@@ -438,9 +440,10 @@ void __global__ vanity_scan(unsigned char* state, int* keys_found, int* gpu, int
         // Code Until here runs at 22_000_000H/s. So the above is fast enough.
 
         // Increment Seed.
-        for (int i = 0; i < 8; ++i) {
-            if (++seed_limbs[i] != 0) break;
-        }
+        seed_limbs[0] += 1;
+        seed_limbs[1] += 3;
+        seed_limbs[2] += 7;
+        seed_limbs[3] += 11;
     }
 
     // Copy Random State so that future calls of this kernel/thread/block
@@ -466,6 +469,7 @@ void __device__ b58enc(
     
     #define R1_DIV 656356768UL
     #define RAW58_SZ (INTERMEDIATE_SZ * 5)
+    #define RAW58_SZ_WITH_PADDING 64
     
     unsigned int in_leading_0s = __clz(binary[0]) >> 3;
     if (in_leading_0s == 4) {
@@ -528,7 +532,7 @@ void __device__ b58enc(
     intermediate[0] += intermediate[1] / R1_DIV;
     intermediate[1] %= R1_DIV;
     
-    uint_fast8_t raw_base58[64];
+    uint_fast8_t raw_base58[RAW58_SZ_WITH_PADDING];
     
     #pragma unroll
     for (int i = 0; i < INTERMEDIATE_SZ; ++i) {
@@ -549,6 +553,8 @@ void __device__ b58enc(
     unsigned int skip = raw_leading_0s - in_leading_0s;
     
     static uint_fast8_t const b58digits_ordered[] = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-    for (int i = 0; i < RAW58_SZ - skip; i++) b58[i] = b58digits_ordered[raw_base58[skip + i]];
-    b58[RAW58_SZ - skip] = 0;
+    const unsigned int n = RAW58_SZ - skip;
+    #pragma unroll
+    for (int i = 0; i < RAW58_SZ; i++) b58[i] = b58digits_ordered[raw_base58[min(skip + i, RAW58_SZ - 1)]];
+    b58[n] = 0;
 }
