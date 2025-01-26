@@ -11,13 +11,13 @@ __device__ const int MAX_PATTERNS = 10;
 
 // exact matches at the beginning of the address, letter ? is wildcard
 __device__ static char const *prefixes[] = {
-	"De1eg",
-	"De1ega",
-	"De1egat",
+	// "De1eg",
+	// "De1ega",
+	// "De1egat",
 	"De1egate"
 };
 
 // "_" to denote exact case
 // "@" to denote case insensitive
-__device__ static char const *prefix_ignore_case_mask = "_____@@@";
+__device__ static char const *prefix_ignore_case_mask = "@@@@@@@@";
 #endif

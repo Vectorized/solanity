@@ -406,7 +406,8 @@ void __device__ b58enc(
     
     uint32_t in_leading_0s = (__clz(binary[0]) >> 3) + (binary[0] == 0) * (__clz(binary[1]) >> 3);
     if (in_leading_0s == 8) {
-        // Unlikely.
+        // Unlikely. Adding this printf somehow improves performance.
+        printf("GPU: In leading zeros exceeded\n");
         for (; in_leading_0s < 32; in_leading_0s++) if (data[in_leading_0s]) break;    
     }
     
@@ -482,7 +483,8 @@ void __device__ b58enc(
         (t[0] == 0) * (__clz(__byte_perm(t[1], 0, 0x0123)) >> 3);
 
     if (raw_leading_0s == 8) {
-        // Unlikely.
+        // Unlikely. Adding this printf somehow improves performance.
+        printf("GPU: Raw leading zeros exceeded\n");
         for (; raw_leading_0s < RAW58_SZ; raw_leading_0s++) if (raw_base58[raw_leading_0s]) break;    
     }
 
